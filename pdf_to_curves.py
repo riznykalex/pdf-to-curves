@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-PDF → Криві (Outline Fonts) — версія з чергою файлів
-Перетворює текст у PDF на векторні криві (контури) за допомогою Ghostscript.
-Підтримує вибір і обробку декількох файлів одразу, з чергою та статусом
-по кожному файлу.
+PDF to Curves (Outline Fonts) - batch queue version
+Converts all text in a PDF into vector curves (outlines) using Ghostscript,
+completely removing the file's dependency on fonts.
+Supports selecting and processing multiple files at once, with a queue
+and per-file status.
 
-Вимоги:
+Requirements:
   - Python 3.8+
-  - Ghostscript, встановлений у системі (команда `gs`, у Windows — `gswin64c`)
-  - Немає сторонніх Python-пакетів — лише стандартна бібліотека.
+  - Ghostscript installed on the system (command `gs`, on Windows: `gswin64c`)
+  - No third-party Python packages - standard library only.
 """
 
 import os
@@ -28,10 +29,10 @@ def find_ghostscript() -> str | None:
     return None
 
 
-STATUS_QUEUED = "У черзі"
-STATUS_RUNNING = "Обробка..."
-STATUS_DONE = "Готово"
-STATUS_ERROR = "Помилка"
+STATUS_QUEUED = "Queued"
+STATUS_RUNNING = "Processing..."
+STATUS_DONE = "Done"
+STATUS_ERROR = "Error"
 
 
 class FileJob:
@@ -46,7 +47,7 @@ class FileJob:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PDF → Криві — пакетна обробка")
+        self.title("PDF to Curves - Batch Processing")
         self.geometry("760x480")
         self.minsize(640, 400)
 
@@ -60,9 +61,9 @@ class App(tk.Tk):
 
         if not self.gs_path:
             messagebox.showwarning(
-                "Ghostscript не знайдено",
-                "Не вдалося знайти Ghostscript у системі.\n\n"
-                "Встановіть його і перезапустіть застосунок:\n"
+                "Ghostscript not found",
+                "Could not find Ghostscript on this system.\n\n"
+                "Please install it and restart the app:\n"
                 "• Windows: https://ghostscript.com/releases/gsdnld.html\n"
                 "• macOS: brew install ghostscript\n"
                 "• Linux: sudo apt install ghostscript",
@@ -72,23 +73,23 @@ class App(tk.Tk):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=10, pady=8)
 
-        ttk.Button(top, text="Додати файли...", command=self.add_files).pack(
+        ttk.Button(top, text="Add files...", command=self.add_files).pack(
             side="left"
         )
-        ttk.Button(top, text="Видалити обрані", command=self.remove_selected).pack(
+        ttk.Button(top, text="Remove selected", command=self.remove_selected).pack(
             side="left", padx=6
         )
-        ttk.Button(top, text="Очистити чергу", command=self.clear_queue).pack(
+        ttk.Button(top, text="Clear queue", command=self.clear_queue).pack(
             side="left"
         )
 
-        # Таблиця черги
+        # Queue table
         columns = ("file", "status")
         self.tree = ttk.Treeview(
             self, columns=columns, show="headings", selectmode="extended"
         )
-        self.tree.heading("file", text="Файл")
-        self.tree.heading("status", text="Статус")
+        self.tree.heading("file", text="File")
+        self.tree.heading("status", text="Status")
         self.tree.column("file", width=520, anchor="w")
         self.tree.column("status", width=140, anchor="center")
         self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 8))
@@ -97,46 +98,46 @@ class App(tk.Tk):
         self.tree.tag_configure(STATUS_ERROR, foreground="#b00020")
         self.tree.tag_configure(STATUS_RUNNING, foreground="#a05a00")
 
-        # Прогрес по поточному файлу
+        # Current file progress
         cur_frame = ttk.Frame(self)
         cur_frame.pack(fill="x", padx=10)
-        self.current_label = ttk.Label(cur_frame, text="Немає активної обробки.")
+        self.current_label = ttk.Label(cur_frame, text="No active processing.")
         self.current_label.pack(anchor="w")
         self.current_progress = ttk.Progressbar(cur_frame, mode="indeterminate")
         self.current_progress.pack(fill="x", pady=(2, 8))
 
-        # Загальний прогрес по черзі
+        # Overall queue progress
         overall_frame = ttk.Frame(self)
         overall_frame.pack(fill="x", padx=10)
-        self.overall_label = ttk.Label(overall_frame, text="Файлів у черзі: 0")
+        self.overall_label = ttk.Label(overall_frame, text="Files in queue: 0")
         self.overall_label.pack(anchor="w")
         self.overall_progress = ttk.Progressbar(
             overall_frame, mode="determinate", maximum=1, value=0
         )
         self.overall_progress.pack(fill="x", pady=(2, 8))
 
-        # Кнопка запуску
+        # Run button
         self.btn_run = ttk.Button(
-            self, text="Перетворити всі файли на криві", command=self.start_processing
+            self, text="Convert all files to curves", command=self.start_processing
         )
         self.btn_run.pack(pady=(0, 10))
 
         ttk.Label(
             self,
             text=(
-                "Результат зберігається поруч з оригіналом як «ім'я_curves.pdf».\n"
-                "Увага: текст стане векторною графікою — його більше не можна буде "
-                "виділити чи скопіювати."
+                "Output files are saved next to the originals as \"name_curves.pdf\".\n"
+                "Note: text will become vector graphics - it can no longer be "
+                "selected or copied as text."
             ),
             foreground="#666",
             justify="left",
         ).pack(anchor="w", padx=10, pady=(0, 8))
 
-    # ---------- Керування чергою ----------
+    # ---------- Queue management ----------
 
     def add_files(self):
         paths = filedialog.askopenfilenames(
-            title="Оберіть один або декілька PDF файлів",
+            title="Select one or more PDF files",
             filetypes=[("PDF files", "*.pdf")],
         )
         existing = {job.src for job in self.jobs}
@@ -151,7 +152,7 @@ class App(tk.Tk):
 
     def remove_selected(self):
         if self.running:
-            messagebox.showinfo("Зачекайте", "Дочекайтесь завершення поточної обробки.")
+            messagebox.showinfo("Please wait", "Wait for the current job to finish.")
             return
         selected = self.tree.selection()
         for iid in selected:
@@ -161,7 +162,7 @@ class App(tk.Tk):
 
     def clear_queue(self):
         if self.running:
-            messagebox.showinfo("Зачекайте", "Дочекайтесь завершення поточної обробки.")
+            messagebox.showinfo("Please wait", "Wait for the current job to finish.")
             return
         self.jobs.clear()
         for iid in self.tree.get_children():
@@ -169,19 +170,19 @@ class App(tk.Tk):
         self._update_overall_label()
 
     def _update_overall_label(self):
-        self.overall_label.config(text=f"Файлів у черзі: {len(self.jobs)}")
+        self.overall_label.config(text=f"Files in queue: {len(self.jobs)}")
         self.overall_progress.config(maximum=max(len(self.jobs), 1), value=0)
 
-    # ---------- Обробка ----------
+    # ---------- Processing ----------
 
     def start_processing(self):
         if self.running:
             return
         if not self.jobs:
-            messagebox.showinfo("Черга порожня", "Спочатку додайте PDF файли.")
+            messagebox.showinfo("Queue is empty", "Add PDF files first.")
             return
         if not self.gs_path:
-            messagebox.showerror("Помилка", "Ghostscript не знайдено в системі.")
+            messagebox.showerror("Error", "Ghostscript was not found on this system.")
             return
 
         for job in self.jobs:
@@ -236,7 +237,7 @@ class App(tk.Tk):
                         tags=(STATUS_RUNNING,),
                     )
                     self.current_label.config(
-                        text=f"Обробка файлу {idx}/{total}: {os.path.basename(job.src)}"
+                        text=f"Processing file {idx}/{total}: {os.path.basename(job.src)}"
                     )
                     self.current_progress.start(12)
                 elif kind == "done":
@@ -261,20 +262,20 @@ class App(tk.Tk):
                 elif kind == "all_done":
                     self.running = False
                     self.btn_run.config(state="normal")
-                    self.current_label.config(text="Обробку завершено.")
+                    self.current_label.config(text="Processing complete.")
                     errors = [j for j in self.jobs if j.status == STATUS_ERROR]
                     if errors:
                         details = "\n".join(
-                            f"• {os.path.basename(j.src)}: {j.error[:200]}"
+                            f"- {os.path.basename(j.src)}: {j.error[:200]}"
                             for j in errors
                         )
                         messagebox.showwarning(
-                            "Завершено з помилками",
-                            f"{len(errors)} з {len(self.jobs)} файлів не вдалося обробити:\n\n{details}",
+                            "Completed with errors",
+                            f"{len(errors)} of {len(self.jobs)} files failed to process:\n\n{details}",
                         )
                     else:
                         messagebox.showinfo(
-                            "Готово", f"Усі {len(self.jobs)} файлів успішно оброблено."
+                            "Done", f"All {len(self.jobs)} files processed successfully."
                         )
         except queue.Empty:
             pass
